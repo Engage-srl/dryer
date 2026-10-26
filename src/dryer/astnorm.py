@@ -183,8 +183,11 @@ def _is_literal(node) -> bool:
 
 
 def _named_before_args(node):
+    # A comment between callee and arguments is not the callee.
     incoming = []
     for child in node.named_children:
+        if child.type in _SKIP:
+            continue
         if child.type in _ARG_LISTS:
             return incoming, child
         incoming.append(child)

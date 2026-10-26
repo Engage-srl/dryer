@@ -176,3 +176,18 @@ fun outer() {
 }
 """
     ) == [(5, 15)]
+
+
+def test_a_comment_between_a_call_and_a_parenthesized_line_is_read():
+    # From detekt's UnusedPrivateClass.kt. tree-sitter reads the parenthesized
+    # line as arguments to run's result, with the comment in between.
+    source = """\
+fun alpha(a: A) {
+    a.run { x }
+    // note
+    (a.b as? C)?.d()
+}
+"""
+    entries = forms("kotlin", source, "a.kt")
+    assert [(entry.start_line, entry.end_line) for entry in entries] == [(1, 5)]
+    assert any('"run"' in item for item in entries[0].fingerprints)
