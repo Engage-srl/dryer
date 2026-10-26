@@ -181,7 +181,6 @@ def _is_literal(node) -> bool:
 
 
 def _named_before_args(node):
-    # A comment between callee and arguments is not the callee.
     incoming = []
     for child in node.named_children:
         if child.type in _SKIP:
@@ -243,8 +242,6 @@ def _call_jobs(node):
 
 
 def _member(node):
-    """The objects and the member name. Kotlin wraps the name in `navigation_suffix`."""
-
     *objects, name = node.named_children
     safe = False
     if name.type == "navigation_suffix" and name.named_children:

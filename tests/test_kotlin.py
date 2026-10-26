@@ -179,8 +179,6 @@ fun outer() {
 
 
 def test_a_comment_between_a_call_and_a_parenthesized_line_is_read():
-    # From detekt's UnusedPrivateClass.kt. tree-sitter reads the parenthesized
-    # line as arguments to run's result, with the comment in between.
     source = """\
 fun alpha(a: A) {
     a.run { x }
