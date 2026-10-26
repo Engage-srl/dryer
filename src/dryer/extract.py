@@ -27,6 +27,20 @@ _DEFINITION_PARENTS = {
     "property_definition",
 }
 
+# Kotlin functions are found by walking these and nothing else, as crapper
+# does: local functions, lambdas, anonymous objects, and local classes stay
+# inside the function that owns them.
+_KOTLIN_CONTAINERS = {
+    "source_file",
+    "class_declaration",
+    "object_declaration",
+    "companion_object",
+    "class_body",
+    "enum_class_body",
+    "enum_entry",
+    "ERROR",
+}
+
 
 def _grammar(path: str) -> str:
     if path.endswith(".tsx"):
@@ -88,6 +102,19 @@ def _java_nodes(data: bytes, root) -> list:
     return found
 
 
+def _kotlin_nodes(data: bytes, root) -> list:
+    found = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type == "function_declaration":
+            if _has(node, "function_body"):
+                found.append(node)
+        elif node.type in _KOTLIN_CONTAINERS:
+            stack.extend(reversed(node.children))
+    return found
+
+
 def _go_nodes(data: bytes, root) -> list:
     found = []
     for node in descendants(root):
@@ -145,6 +172,7 @@ def _rust_nodes(data: bytes, root) -> list:
 
 _PICKERS = {
     "java": ("java", _java_nodes),
+    "kotlin": ("kotlin", _kotlin_nodes),
     "go": ("go", _go_nodes),
     "python": ("python", _python_nodes),
     "typescript": (_grammar, _typescript_nodes),
@@ -158,7 +186,7 @@ def _tree_entries(language: str, source: str, path: str, file: str) -> list[Entr
     data, tree = parse(source, grammar)
     entries = []
     for node in pick(data, tree.root_node):
-        normalized = normalize(node, data)
+        normalized = normalize(node, data, language)
         if normalized is None:
             continue
         entries.append(
