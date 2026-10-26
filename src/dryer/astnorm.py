@@ -144,8 +144,6 @@ _SCOPED = {
 _ARG_LISTS = {"argument_list", "arguments", "call_suffix"}
 _TYPE_ARGS = {"type_arguments", "type_parameters"}
 
-# `in`, `is`, `as`, and `..` are tokens in Python, TypeScript, and Rust as
-# well, so they are kept only where the language asks for them.
 LANGUAGE_OPERATORS = {
     "kotlin": frozenset({"?:", "!!", "..", "..<", "in", "is", "as", "as?"}),
 }

@@ -27,9 +27,6 @@ _DEFINITION_PARENTS = {
     "property_definition",
 }
 
-# Kotlin functions are found by walking these and nothing else, as crapper
-# does: local functions, lambdas, anonymous objects, and local classes stay
-# inside the function that owns them.
 _KOTLIN_CONTAINERS = {
     "source_file",
     "class_declaration",
