@@ -145,7 +145,14 @@ _SCOPED = {
 }
 
 _ARG_LISTS = {"argument_list", "arguments", "call_suffix"}
-_INTERPOLATIONS = {"interpolation", "interpolated_identifier", "interpolated_expression"}
+_INTERPOLATIONS = {
+    "interpolation",
+    "interpolated_identifier",
+    "interpolated_expression",
+    "template_substitution",
+}
+# Dart spells some operators as named leaves, which carry no token child.
+_OPERATOR_LEAVES = {"additive_operator", "equality_operator", "minus_operator"}
 _TYPE_ARGS = {"type_arguments", "type_parameters"}
 
 _DATA: bytes = b""
@@ -207,6 +214,19 @@ def _infix_name(node) -> bool:
     return len(named) == 3 and named[1].id == node.id
 
 
+def _dart_called(node) -> bool:
+    """Dart calls are flat: the name, then a `selector` holding the arguments."""
+
+    holder = node
+    if node.parent is not None and node.parent.type in {
+        "unconditional_assignable_selector",
+        "conditional_assignable_selector",
+    }:
+        holder = node.parent.parent
+    following = holder.next_named_sibling if holder is not None else None
+    return following is not None and child_of_type(following, "argument_part") is not None
+
+
 def _operator(node):
     # `?:` is Kotlin's elvis operator; TypeScript mapped types also spell `?:`.
     if node.type == "?:" and (node.parent is None or node.parent.type != "elvis_expression"):
@@ -216,7 +236,7 @@ def _operator(node):
 
 def _named_leaf(node, head: bool):
     if node.type in _IDENTIFIERS:
-        if head or _infix_name(node):
+        if head or _infix_name(node) or _dart_called(node):
             return [K("symbol"), _text(node)]
         return K("symbol")
     if _is_literal(node):
@@ -235,6 +255,8 @@ def _try_leaf(node, mode: str, head: bool):
         return _operator(node)
     if not node.is_named:
         return None
+    if node.type in _OPERATOR_LEAVES:
+        return [K("symbol"), _text(node)]
     return _named_leaf(node, head)
 
 
