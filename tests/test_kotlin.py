@@ -141,3 +141,9 @@ def test_kotlin_detection(tmp_path):
 
 def test_kotlin_broken_source_does_not_raise():
     forms("fun broken( {\n", "B.kt")
+
+
+def test_help_mentions_kotlin():
+    from dryer.cli import HELP
+
+    assert "Kotlin (.kt)" in HELP
