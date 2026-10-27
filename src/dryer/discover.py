@@ -45,7 +45,9 @@ SKIP_DIRS = {
     ".dart_tool",
 }
 
-TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__", "integration_test", "test_driver"}
+TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
+# Dart tests only: a Go or Python folder with these names is still source.
+DART_TEST_DIRS = {"integration_test", "test_driver"}
 
 DART_GENERATED_SUFFIXES = (
     ".g.dart",
@@ -66,6 +68,12 @@ def language_of(path: str | Path) -> str | None:
     if name.endswith(".d.ts") or name.endswith(DART_GENERATED_SUFFIXES):
         return None
     return EXTENSIONS.get(file_path.suffix)
+
+
+def _test_dirs(file_path: Path) -> set[str]:
+    if file_path.suffix == ".dart":
+        return TEST_DIRS | DART_TEST_DIRS
+    return TEST_DIRS
 
 
 def is_test_file(path: str | Path) -> bool:
@@ -92,7 +100,7 @@ def is_test_file(path: str | Path) -> bool:
         return True
     if name.endswith("_test.py") or (name.startswith("test_") and name.endswith(".py")):
         return True
-    return any(part in TEST_DIRS for part in file_path.parts)
+    return any(part in _test_dirs(file_path) for part in file_path.parts)
 
 
 def _skipped_dir(name: str) -> bool:
