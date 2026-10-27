@@ -185,3 +185,30 @@ def test_other_languages_keep_their_fingerprints():
 def test_help_mentions_dart(capsys):
     assert run(["--help"]) == 0
     assert "Dart (.dart)" in capsys.readouterr().out
+
+
+def test_dart_const_constructor_calls_keep_their_names():
+    padding = _function("  return const Padding(padding: EdgeInsets.all(8), child: Text('a'));")
+    sized = _function("  return const SizedBox(height: EdgeInsets.all(8), width: Text('a'));", "beta")
+    all_ = _function("  return const EdgeInsets.all(8);")
+    symmetric = _function("  return const EdgeInsets.symmetric(8);", "beta")
+    assert _score(padding, sized) < 1.0
+    assert _score(all_, symmetric) < 1.0
+
+
+def test_dart_cascade_calls_keep_their_names():
+    add = _function("  return xs..add(1)..clear();")
+    remove = _function("  return xs..remove(1)..clear();", "beta")
+    assert _score(add, remove) < 1.0
+
+
+def test_dart_super_calls_keep_their_names():
+    init = _function("  super.initState();\n  return a;")
+    dispose = _function("  super.dispose();\n  return a;", "beta")
+    assert _score(init, dispose) < 1.0
+
+
+def test_dart_test_folders_do_not_skip_other_languages(tmp_path):
+    write_source(tmp_path, "integration_test/tool.go", "package x\n")
+    write_source(tmp_path, "integration_test/app.dart", "void a() {}\n")
+    assert [p.name for p in iter_source_files([tmp_path])] == ["tool.go"]

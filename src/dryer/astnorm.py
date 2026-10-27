@@ -214,17 +214,38 @@ def _infix_name(node) -> bool:
     return len(named) == 3 and named[1].id == node.id
 
 
-def _dart_called(node) -> bool:
-    """Dart calls are flat: the name, then a `selector` holding the arguments."""
+_DART_MEMBERS = {
+    "unconditional_assignable_selector",
+    "conditional_assignable_selector",
+    "cascade_selector",
+}
 
-    holder = node
-    if node.parent is not None and node.parent.type in {
-        "unconditional_assignable_selector",
-        "conditional_assignable_selector",
-    }:
-        holder = node.parent.parent
-    following = holder.next_named_sibling if holder is not None else None
-    return following is not None and child_of_type(following, "argument_part") is not None
+
+def _dart_holder(node):
+    """The node whose next sibling holds the arguments: `.name` sits in a
+    `selector`, except after `super` and in a cascade."""
+
+    parent = node.parent
+    if parent is None or parent.type not in _DART_MEMBERS:
+        return node
+    if parent.parent is not None and parent.parent.type == "selector":
+        return parent.parent
+    return parent
+
+
+def _has_arguments(node) -> bool:
+    if node is None:
+        return False
+    return node.type == "argument_part" or child_of_type(node, "argument_part") is not None
+
+
+def _dart_called(node) -> bool:
+    """Dart calls are flat: the name, then a `selector` holding the arguments.
+    `const A.b(...)` keeps both names."""
+
+    if node.parent is not None and node.parent.type == "const_object_expression":
+        return True
+    return _has_arguments(_dart_holder(node).next_named_sibling)
 
 
 def _operator(node):
