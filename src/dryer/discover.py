@@ -21,6 +21,7 @@ EXTENSIONS = {
     ".cts": "typescript",
     ".rs": "rust",
     ".py": "python",
+    ".dart": "dart",
 }
 
 SKIP_DIRS = {
@@ -41,15 +42,28 @@ SKIP_DIRS = {
     "testdata",
     "__pycache__",
     ".clj-kondo",
+    ".dart_tool",
 }
 
-TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
+TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__", "integration_test", "test_driver"}
+
+DART_GENERATED_SUFFIXES = (
+    ".g.dart",
+    ".freezed.dart",
+    ".mocks.dart",
+    ".gr.dart",
+    ".config.dart",
+    ".pb.dart",
+    ".pbenum.dart",
+    ".pbjson.dart",
+    ".pbserver.dart",
+)
 
 
 def language_of(path: str | Path) -> str | None:
     file_path = Path(path)
     name = file_path.name
-    if name.endswith(".d.ts"):
+    if name.endswith(".d.ts") or name.endswith(DART_GENERATED_SUFFIXES):
         return None
     return EXTENSIONS.get(file_path.suffix)
 
@@ -57,7 +71,7 @@ def language_of(path: str | Path) -> str | None:
 def is_test_file(path: str | Path) -> bool:
     file_path = Path(path)
     name = file_path.name
-    if name.endswith("_test.go"):
+    if name.endswith(("_test.go", "_test.dart")):
         return True
     if name.endswith(("_test.clj", "_test.cljc", "_test.cljs", "_test.cljd", "_test.bb")):
         return True

@@ -135,6 +135,9 @@ _SCOPED = {
 }
 
 _ARG_LISTS = {"argument_list", "arguments"}
+_INTERPOLATIONS = {"interpolation", "template_substitution"}
+# Dart spells some operators as named leaves, which carry no token child.
+_OPERATOR_LEAVES = {"additive_operator", "equality_operator", "minus_operator"}
 _TYPE_ARGS = {"type_arguments", "type_parameters"}
 
 _DATA: bytes = b""
@@ -158,7 +161,7 @@ _PENDING = object()
 def _is_literal(node) -> bool:
     if node.type not in _LITERALS:
         return False
-    if node.type == "string" and any(child.type == "interpolation" for child in node.children):
+    if node.type == "string" and any(child.type in _INTERPOLATIONS for child in node.children):
         return False
     return True
 
@@ -184,9 +187,22 @@ def _callee_leaf(node):
     return _PENDING
 
 
+def _dart_called(node) -> bool:
+    """Dart calls are flat: the name, then a `selector` holding the arguments."""
+
+    holder = node
+    if node.parent is not None and node.parent.type in {
+        "unconditional_assignable_selector",
+        "conditional_assignable_selector",
+    }:
+        holder = node.parent.parent
+    following = holder.next_named_sibling if holder is not None else None
+    return following is not None and child_of_type(following, "argument_part") is not None
+
+
 def _named_leaf(node, head: bool):
     if node.type in _IDENTIFIERS:
-        if head:
+        if head or _dart_called(node):
             return [K("symbol"), _text(node)]
         return K("symbol")
     if _is_literal(node):
@@ -205,6 +221,8 @@ def _try_leaf(node, mode: str, head: bool):
         return [K("symbol"), node.type]
     if not node.is_named:
         return None
+    if node.type in _OPERATOR_LEAVES:
+        return [K("symbol"), _text(node)]
     return _named_leaf(node, head)
 
 
