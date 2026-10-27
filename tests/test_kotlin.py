@@ -147,3 +147,17 @@ def test_help_mentions_kotlin():
     from dryer.cli import HELP
 
     assert "Kotlin (.kt)" in HELP
+
+
+def test_kotlin_infix_calls_keep_their_names():
+    until = _function("    return (0 until 3).toList()")
+    down = _function("    return (0 downTo 3).toList()", "beta")
+    renamed = _function("    return (1 until 2).toList()", "beta")
+    assert _score(until, down) < 0.99
+    assert _score(until, renamed) == 1.0
+
+
+def test_typescript_mapped_type_optional_is_not_an_operator():
+    source = "function alpha<T>(x: { [K in keyof T]?: T[K] }) {\n  return x;\n}\n"
+    entries, _warning = entries_in_source("typescript", source, "a.ts", "a.ts")
+    assert not any("?:" in item for item in entries[0].fingerprints)

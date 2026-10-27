@@ -197,9 +197,26 @@ def _callee_leaf(node):
     return _PENDING
 
 
+def _infix_name(node) -> bool:
+    """The function in a Kotlin infix call: `until` in `0 until n`."""
+
+    parent = node.parent
+    if parent is None or parent.type != "infix_expression":
+        return False
+    named = parent.named_children
+    return len(named) == 3 and named[1].id == node.id
+
+
+def _operator(node):
+    # `?:` is Kotlin's elvis operator; TypeScript mapped types also spell `?:`.
+    if node.type == "?:" and (node.parent is None or node.parent.type != "elvis_expression"):
+        return None
+    return [K("symbol"), node.type]
+
+
 def _named_leaf(node, head: bool):
     if node.type in _IDENTIFIERS:
-        if head:
+        if head or _infix_name(node):
             return [K("symbol"), _text(node)]
         return K("symbol")
     if _is_literal(node):
@@ -215,7 +232,7 @@ def _try_leaf(node, mode: str, head: bool):
     if node.type in _SKIP:
         return None
     if node.type in _OPERATORS:
-        return [K("symbol"), node.type]
+        return _operator(node)
     if not node.is_named:
         return None
     return _named_leaf(node, head)
