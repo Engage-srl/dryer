@@ -10,7 +10,7 @@ their locals differ.
 from __future__ import annotations
 
 from dryer.shape import K
-from dryer.treesitter import node_text
+from dryer.treesitter import child_of_type, node_text
 
 _SKIP = {
     "comment",
@@ -28,6 +28,7 @@ _IDENTIFIERS = {
     "shorthand_property_identifier",
     "shorthand_property_identifier_pattern",
     "package_identifier",
+    "simple_identifier",
 }
 
 _LITERALS = {
@@ -62,6 +63,11 @@ _LITERALS = {
     "template_string",
     "regex",
     "regex_literal",
+    "long_literal",
+    "hex_literal",
+    "bin_literal",
+    "real_literal",
+    "unsigned_literal",
 }
 
 _OPERATORS = {
@@ -111,6 +117,9 @@ _OPERATORS = {
     ":=",
     "=>",
     "?",
+    "?:",
+    "!!",
+    "as?",
 }
 
 _CALLS = {
@@ -127,6 +136,7 @@ _ATTRIBUTES = {
     "selector_expression",
     "field_access",
     "field_expression",
+    "navigation_expression",
 }
 
 _SCOPED = {
@@ -134,7 +144,8 @@ _SCOPED = {
     "scoped_type_identifier",
 }
 
-_ARG_LISTS = {"argument_list", "arguments"}
+_ARG_LISTS = {"argument_list", "arguments", "call_suffix"}
+_INTERPOLATIONS = {"interpolation", "interpolated_identifier", "interpolated_expression"}
 _TYPE_ARGS = {"type_arguments", "type_parameters"}
 
 _DATA: bytes = b""
@@ -158,7 +169,9 @@ _PENDING = object()
 def _is_literal(node) -> bool:
     if node.type not in _LITERALS:
         return False
-    if node.type == "string" and any(child.type == "interpolation" for child in node.children):
+    if node.type in {"string", "string_literal"} and any(
+        child.type in _INTERPOLATIONS for child in node.children
+    ):
         return False
     return True
 
@@ -222,11 +235,27 @@ def _call_jobs(node):
     return jobs
 
 
+def _member(name):
+    """Kotlin keeps the member's name inside a `navigation_suffix`."""
+
+    if name.type != "navigation_suffix":
+        return name
+    ident = child_of_type(name, *_IDENTIFIERS)
+    return ident if ident is not None else name
+
+
+def _safe_call(name) -> list:
+    if name.type == "navigation_suffix" and child_of_type(name, "?.") is not None:
+        return [[K("symbol"), "?."]]
+    return []
+
+
 def _attr_jobs(node, head: bool):
     named = list(node.named_children)
     if not named:
         return []
-    *objects, name = named
+    *objects, suffix = named
+    name = _member(suffix)
     jobs = [(obj, "norm", False) for obj in objects]
     if name.type in _IDENTIFIERS:
         return jobs
@@ -309,12 +338,14 @@ def _assemble_attr(node, head: bool, cache):
     named = list(node.named_children)
     if not named:
         return [K(node.type)]
-    *objects, name = named
+    *objects, suffix = named
+    name = _member(suffix)
     parts = [K(node.type)]
     for obj in objects:
         norm = cache[(id(obj), "norm", False)]
         if norm is not None:
             parts.append(norm)
+    parts.extend(_safe_call(suffix))
     nested = _name_value(name, head, cache)
     if nested is not None:
         parts.append(nested)

@@ -143,8 +143,59 @@ def _rust_nodes(data: bytes, root) -> list:
     return found
 
 
+_KOTLIN_EXECUTABLES = {
+    "function_declaration",
+    "getter",
+    "setter",
+    "lambda_literal",
+    "anonymous_initializer",
+    "object_literal",
+}
+
+
+def _kotlin_inline(node) -> bool:
+    modifiers = child_of_type(node, "modifiers")
+    if modifiers is None:
+        return False
+    return any(
+        child.type == "function_modifier" and child.text == b"inline"
+        for child in modifiers.children
+    )
+
+
+def _kotlin_has_property(node) -> bool:
+    """An accessor on its own line parses as a sibling after its property."""
+
+    if node.parent.type == "property_declaration":
+        return True
+    current = node.prev_named_sibling
+    while current is not None and current.type in {"getter", "setter"}:
+        current = current.prev_named_sibling
+    return current is not None and current.type == "property_declaration"
+
+
+def _kotlin_entry(node) -> bool:
+    if not _has(node, "function_body") or _inside(node, _KOTLIN_EXECUTABLES):
+        return False
+    if node.type == "function_declaration":
+        return not _kotlin_inline(node)
+    return _kotlin_has_property(node)
+
+
+def _kotlin_nodes(data: bytes, root) -> list:
+    """The functions crapper scores: bodies outside other functions, lambdas,
+    and anonymous objects; no `inline` functions; custom accessors."""
+
+    found = []
+    for node in descendants(root):
+        if node.type in {"function_declaration", "getter", "setter"} and _kotlin_entry(node):
+            found.append(node)
+    return found
+
+
 _PICKERS = {
     "java": ("java", _java_nodes),
+    "kotlin": ("kotlin", _kotlin_nodes),
     "go": ("go", _go_nodes),
     "python": ("python", _python_nodes),
     "typescript": (_grammar, _typescript_nodes),

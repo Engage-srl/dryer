@@ -21,6 +21,7 @@ EXTENSIONS = {
     ".cts": "typescript",
     ".rs": "rust",
     ".py": "python",
+    ".kt": "kotlin",
 }
 
 SKIP_DIRS = {
@@ -41,6 +42,7 @@ SKIP_DIRS = {
     "testdata",
     "__pycache__",
     ".clj-kondo",
+    ".claude",
 }
 
 TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
