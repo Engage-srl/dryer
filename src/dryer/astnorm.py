@@ -27,8 +27,8 @@ _IDENTIFIERS = {
     "property_identifier",
     "shorthand_property_identifier",
     "shorthand_property_identifier_pattern",
-    "package_identifier",
     "simple_identifier",
+    "package_identifier",
 }
 
 _LITERALS = {
@@ -52,6 +52,11 @@ _LITERALS = {
     "float_literal",
     "imaginary_literal",
     "integer_literal",
+    "real_literal",
+    "long_literal",
+    "hex_literal",
+    "bin_literal",
+    "unsigned_literal",
     "true",
     "false",
     "null",
@@ -63,11 +68,6 @@ _LITERALS = {
     "template_string",
     "regex",
     "regex_literal",
-    "long_literal",
-    "hex_literal",
-    "bin_literal",
-    "real_literal",
-    "unsigned_literal",
 }
 
 _OPERATORS = {
@@ -117,9 +117,6 @@ _OPERATORS = {
     ":=",
     "=>",
     "?",
-    "?:",
-    "!!",
-    "as?",
 }
 
 _CALLS = {
@@ -145,24 +142,31 @@ _SCOPED = {
 }
 
 _ARG_LISTS = {"argument_list", "arguments", "call_suffix"}
+# Dart spells some operators as named leaves, which carry no token child.
+_OPERATOR_LEAVES = {"additive_operator", "equality_operator", "minus_operator"}
+_TYPE_ARGS = {"type_arguments", "type_parameters"}
+
+LANGUAGE_OPERATORS = {
+    "kotlin": frozenset({"?:", "!!", "..", "..<", "in", "is", "as", "as?"}),
+}
+
 _INTERPOLATIONS = {
     "interpolation",
     "interpolated_identifier",
     "interpolated_expression",
     "template_substitution",
 }
-# Dart spells some operators as named leaves, which carry no token child.
-_OPERATOR_LEAVES = {"additive_operator", "equality_operator", "minus_operator"}
-_TYPE_ARGS = {"type_arguments", "type_parameters"}
 
 _DATA: bytes = b""
+_EXTRA_OPERATORS: frozenset[str] = frozenset()
 
 
-def normalize(node, data: bytes):
+def normalize(node, data: bytes, language: str = ""):
     """Normalized tree for `node`, or None when the node is only punctuation."""
 
-    global _DATA
+    global _DATA, _EXTRA_OPERATORS
     _DATA = data
+    _EXTRA_OPERATORS = LANGUAGE_OPERATORS.get(language, frozenset())
     return _normalize(node)
 
 
@@ -186,6 +190,8 @@ def _is_literal(node) -> bool:
 def _named_before_args(node):
     incoming = []
     for child in node.named_children:
+        if child.type in _SKIP:
+            continue
         if child.type in _ARG_LISTS:
             return incoming, child
         incoming.append(child)
@@ -204,21 +210,15 @@ def _callee_leaf(node):
     return _PENDING
 
 
-def _infix_name(node) -> bool:
-    """The function in a Kotlin infix call: `until` in `0 until n`."""
-
-    parent = node.parent
-    if parent is None or parent.type != "infix_expression":
-        return False
-    named = parent.named_children
-    return len(named) == 3 and named[1].id == node.id
-
-
 _DART_MEMBERS = {
     "unconditional_assignable_selector",
     "conditional_assignable_selector",
     "cascade_selector",
 }
+
+
+def _dart_called(node) -> bool:
+    """Dart calls are flat: the name, then a `selector` holding the arguments."""
 
 
 def _dart_holder(node):
@@ -248,16 +248,9 @@ def _dart_called(node) -> bool:
     return _has_arguments(_dart_holder(node).next_named_sibling)
 
 
-def _operator(node):
-    # `?:` is Kotlin's elvis operator; TypeScript mapped types also spell `?:`.
-    if node.type == "?:" and (node.parent is None or node.parent.type != "elvis_expression"):
-        return None
-    return [K("symbol"), node.type]
-
-
 def _named_leaf(node, head: bool):
     if node.type in _IDENTIFIERS:
-        if head or _infix_name(node) or _dart_called(node):
+        if head or _dart_called(node):
             return [K("symbol"), _text(node)]
         return K("symbol")
     if _is_literal(node):
@@ -272,8 +265,8 @@ def _try_leaf(node, mode: str, head: bool):
         return _PENDING
     if node.type in _SKIP:
         return None
-    if node.type in _OPERATORS:
-        return _operator(node)
+    if node.type in _OPERATORS or node.type in _EXTRA_OPERATORS:
+        return [K("symbol"), node.type]
     if not node.is_named:
         return None
     if node.type in _OPERATOR_LEAVES:
@@ -295,27 +288,19 @@ def _call_jobs(node):
     return jobs
 
 
-def _member(name):
-    """Kotlin keeps the member's name inside a `navigation_suffix`."""
-
-    if name.type != "navigation_suffix":
-        return name
-    ident = child_of_type(name, *_IDENTIFIERS)
-    return ident if ident is not None else name
-
-
-def _safe_call(name) -> list:
-    if name.type == "navigation_suffix" and child_of_type(name, "?.") is not None:
-        return [[K("symbol"), "?."]]
-    return []
+def _member(node):
+    *objects, name = node.named_children
+    safe = False
+    if name.type == "navigation_suffix" and name.named_children:
+        safe = any(child.type == "?." for child in name.children)
+        name = name.named_children[-1]
+    return objects, name, safe
 
 
 def _attr_jobs(node, head: bool):
-    named = list(node.named_children)
-    if not named:
+    if not node.named_children:
         return []
-    *objects, suffix = named
-    name = _member(suffix)
+    objects, name, _ = _member(node)
     jobs = [(obj, "norm", False) for obj in objects]
     if name.type in _IDENTIFIERS:
         return jobs
@@ -357,7 +342,14 @@ def _jobs(node, mode: str, head: bool):
         return _call_jobs(node)
     if node.type in _ATTRIBUTES:
         return _attr_jobs(node, head)
-    return [(child, "norm", False) for child in node.children]
+    return [(child, "norm", _is_infix_name(node, child)) for child in node.children]
+
+
+def _is_infix_name(node, child) -> bool:
+    if node.type != "infix_expression":
+        return False
+    named = [item for item in node.named_children if item.type not in _SKIP]
+    return len(named) == 3 and child == named[1]
 
 
 def _name_value(name, head: bool, cache):
@@ -395,17 +387,16 @@ def _assemble_call(node, cache):
 
 
 def _assemble_attr(node, head: bool, cache):
-    named = list(node.named_children)
-    if not named:
+    if not node.named_children:
         return [K(node.type)]
-    *objects, suffix = named
-    name = _member(suffix)
+    objects, name, safe = _member(node)
     parts = [K(node.type)]
     for obj in objects:
         norm = cache[(id(obj), "norm", False)]
         if norm is not None:
             parts.append(norm)
-    parts.extend(_safe_call(suffix))
+    if safe:
+        parts.append([K("symbol"), "?."])
     nested = _name_value(name, head, cache)
     if nested is not None:
         parts.append(nested)
@@ -439,7 +430,7 @@ def _callee_value(node, cache):
 def _assemble_children(node, cache):
     children = []
     for child in node.children:
-        norm = cache[(id(child), "norm", False)]
+        norm = cache[(id(child), "norm", _is_infix_name(node, child))]
         if norm is not None:
             children.append(norm)
     return [K(node.type), *children]

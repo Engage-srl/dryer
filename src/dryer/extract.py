@@ -27,6 +27,17 @@ _DEFINITION_PARENTS = {
     "property_definition",
 }
 
+_KOTLIN_CONTAINERS = {
+    "source_file",
+    "class_declaration",
+    "object_declaration",
+    "companion_object",
+    "class_body",
+    "enum_class_body",
+    "enum_entry",
+    "ERROR",
+}
+
 
 def _grammar(path: str) -> str:
     if path.endswith(".tsx"):
@@ -88,6 +99,30 @@ def _java_nodes(data: bytes, root) -> list:
     return found
 
 
+def _kotlin_inline(node) -> bool:
+    modifiers = child_of_type(node, "modifiers")
+    if modifiers is None:
+        return False
+    return any(
+        child_of_type(modifier, "inline") is not None
+        for modifier in modifiers.children
+        if modifier.type == "function_modifier"
+    )
+
+
+def _kotlin_nodes(data: bytes, root) -> list:
+    found = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type == "function_declaration":
+            if _has(node, "function_body") and not _kotlin_inline(node):
+                found.append(node)
+        elif node.type in _KOTLIN_CONTAINERS:
+            stack.extend(reversed(node.children))
+    return found
+
+
 def _go_nodes(data: bytes, root) -> list:
     found = []
     for node in descendants(root):
@@ -140,56 +175,6 @@ def _rust_nodes(data: bytes, root) -> list:
         if _rust_in_tests(data, node):
             continue
         found.append(node)
-    return found
-
-
-_KOTLIN_EXECUTABLES = {
-    "function_declaration",
-    "getter",
-    "setter",
-    "lambda_literal",
-    "anonymous_initializer",
-    "object_literal",
-}
-
-
-def _kotlin_inline(node) -> bool:
-    modifiers = child_of_type(node, "modifiers")
-    if modifiers is None:
-        return False
-    return any(
-        child.type == "function_modifier" and child.text == b"inline"
-        for child in modifiers.children
-    )
-
-
-def _kotlin_has_property(node) -> bool:
-    """An accessor on its own line parses as a sibling after its property."""
-
-    if node.parent.type == "property_declaration":
-        return True
-    current = node.prev_named_sibling
-    while current is not None and current.type in {"getter", "setter"}:
-        current = current.prev_named_sibling
-    return current is not None and current.type == "property_declaration"
-
-
-def _kotlin_entry(node) -> bool:
-    if not _has(node, "function_body") or _inside(node, _KOTLIN_EXECUTABLES):
-        return False
-    if node.type == "function_declaration":
-        return not _kotlin_inline(node)
-    return _kotlin_has_property(node)
-
-
-def _kotlin_nodes(data: bytes, root) -> list:
-    """The functions crapper scores: bodies outside other functions, lambdas,
-    and anonymous objects; no `inline` functions; custom accessors."""
-
-    found = []
-    for node in descendants(root):
-        if node.type in {"function_declaration", "getter", "setter"} and _kotlin_entry(node):
-            found.append(node)
     return found
 
 
@@ -250,7 +235,7 @@ def _tree_entries(language: str, source: str, path: str, file: str) -> list[Entr
     entries = []
     for picked in pick(data, tree.root_node):
         node, first = picked if isinstance(picked, tuple) else (picked, picked)
-        normalized = normalize(node, data)
+        normalized = normalize(node, data, language)
         if normalized is None:
             continue
         entries.append(

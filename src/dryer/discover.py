@@ -1,10 +1,13 @@
 """Find source files and decide which language each one is written in.
 
-The extensions and the skipped directories match crapper and mutator, with
-`.cljd` added because dry4clj reads it.
+The extensions, the skipped directories, and the test directories match
+crapper and mutator, with `.cljd` added because dry4clj reads it. A test
+directory is one of `TEST_DIRS` or a Gradle or Kotlin Multiplatform test
+source set such as `commonTest`, `jvmTest`, `testFixtures`, or `testData`.
 """
 
 import os
+import re
 from pathlib import Path
 
 EXTENSIONS = {
@@ -14,6 +17,7 @@ EXTENSIONS = {
     ".cljd": "clojure",
     ".bb": "clojure",
     ".java": "java",
+    ".kt": "kotlin",
     ".go": "go",
     ".ts": "typescript",
     ".tsx": "typescript",
@@ -21,12 +25,12 @@ EXTENSIONS = {
     ".cts": "typescript",
     ".rs": "rust",
     ".py": "python",
-    ".kt": "kotlin",
     ".dart": "dart",
 }
 
 SKIP_DIRS = {
     ".git",
+    ".claude",
     ".hg",
     ".svn",
     ".idea",
@@ -43,11 +47,11 @@ SKIP_DIRS = {
     "testdata",
     "__pycache__",
     ".clj-kondo",
-    ".claude",
     ".dart_tool",
 }
 
 TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
+_TEST_SOURCE_SET = re.compile(r"[a-z][A-Za-z0-9]*Tests?|test[A-Z][A-Za-z0-9]*")
 # Dart tests only: a Go or Python folder with these names is still source.
 DART_TEST_DIRS = {"integration_test", "test_driver"}
 
@@ -72,10 +76,12 @@ def language_of(path: str | Path) -> str | None:
     return EXTENSIONS.get(file_path.suffix)
 
 
-def _test_dirs(file_path: Path) -> set[str]:
-    if file_path.suffix == ".dart":
-        return TEST_DIRS | DART_TEST_DIRS
-    return TEST_DIRS
+def is_test_dir(name: str) -> bool:
+    return name in TEST_DIRS or _TEST_SOURCE_SET.fullmatch(name) is not None
+
+
+def _is_dart_test_dir(file_path: Path, name: str) -> bool:
+    return file_path.suffix == ".dart" and name in DART_TEST_DIRS
 
 
 def is_test_file(path: str | Path) -> bool:
@@ -102,11 +108,13 @@ def is_test_file(path: str | Path) -> bool:
         return True
     if name.endswith("_test.py") or (name.startswith("test_") and name.endswith(".py")):
         return True
-    return any(part in _test_dirs(file_path) for part in file_path.parts)
+    return any(
+        is_test_dir(part) or _is_dart_test_dir(file_path, part) for part in file_path.parts
+    )
 
 
 def _skipped_dir(name: str) -> bool:
-    return name in SKIP_DIRS or name in TEST_DIRS
+    return name in SKIP_DIRS or is_test_dir(name)
 
 
 def _walk(root: Path) -> list[Path]:
