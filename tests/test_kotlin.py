@@ -189,3 +189,18 @@ fun alpha(a: A) {
     entries = forms("kotlin", source, "a.kt")
     assert [(entry.start_line, entry.end_line) for entry in entries] == [(1, 5)]
     assert any('"run"' in item for item in entries[0].fingerprints)
+
+
+def test_an_infix_call_keeps_its_name():
+    until = "fun alpha(n: Int): List<Int> {\n    return (0 until 3).toList()\n}\n"
+    down_to = "fun beta(n: Int): List<Int> {\n    return (0 downTo 3).toList()\n}\n"
+    other_bounds = "fun beta(n: Int): List<Int> {\n    return (1 until 2).toList()\n}\n"
+    assert any('"until"' in item for item in forms("kotlin", until, "a.kt")[0].fingerprints)
+    assert score("kotlin", until, down_to) < 1.0
+    assert score("kotlin", until, other_bounds) == 1.0
+
+
+def test_infix_operands_are_not_names():
+    left = "fun alpha(a: Int, b: Int) = a shl b"
+    right = "fun beta(x: Int, y: Int) = x shl y"
+    assert score("kotlin", left, right) == 1.0

@@ -295,7 +295,14 @@ def _jobs(node, mode: str, head: bool):
         return _call_jobs(node)
     if node.type in _ATTRIBUTES:
         return _attr_jobs(node, head)
-    return [(child, "norm", False) for child in node.children]
+    return [(child, "norm", _is_infix_name(node, child)) for child in node.children]
+
+
+def _is_infix_name(node, child) -> bool:
+    if node.type != "infix_expression":
+        return False
+    named = [item for item in node.named_children if item.type not in _SKIP]
+    return len(named) == 3 and child == named[1]
 
 
 def _name_value(name, head: bool, cache):
@@ -376,7 +383,7 @@ def _callee_value(node, cache):
 def _assemble_children(node, cache):
     children = []
     for child in node.children:
-        norm = cache[(id(child), "norm", False)]
+        norm = cache[(id(child), "norm", _is_infix_name(node, child))]
         if norm is not None:
             children.append(norm)
     return [K(node.type), *children]
