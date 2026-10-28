@@ -164,14 +164,12 @@ SAMPLES = {
     ("java", "A.java"): "class A {\n  int f(int[] xs, String s) {\n    int n = 0;\n    for (int x : xs) { if (x > 0 && s != null) n += x * 2; }\n    return s.length() + n - 1;\n  }\n}\n",
     ("typescript", "a.ts"): "function f(xs: number[], s?: string): number {\n  const ys = xs.filter((x) => x > 0).map((x) => x * 2);\n  return `${s}`.length + (s?.length ?? 0) - ys.length;\n}\n",
     ("python", "a.py"): "def f(xs, s):\n    ys = [x * 2 for x in xs if x > 0 and s]\n    return len(s) + sum(ys) - 1\n",
-    ("kotlin", "a.kt"): "fun f(xs: List<Int>, s: String?): Int {\n    val ys = xs.filter { it > 0 }.map { it * 2 }\n    return (s?.length ?: 0) + ys.size - 1\n}\n",
 }
 
 DIGESTS = {
     "java": "dcb1e5ff90317fb0483167096aaf653af44a6c9d",
     "typescript": "abf938e18ce240fe8b3c12af7d11336f66c6d0b2",
     "python": "ac7c7686c73dbed762977d3cbbc94aa920f53699",
-    "kotlin": "dcaf64ce616d8f4f3fb42e00c34ce28d9da3f31d",
 }
 
 

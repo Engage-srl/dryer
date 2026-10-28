@@ -10,7 +10,7 @@ their locals differ.
 from __future__ import annotations
 
 from dryer.shape import K
-from dryer.treesitter import node_text
+from dryer.treesitter import child_of_type, node_text
 
 _SKIP = {
     "comment",
@@ -161,7 +161,9 @@ _PENDING = object()
 def _is_literal(node) -> bool:
     if node.type not in _LITERALS:
         return False
-    if node.type == "string" and any(child.type in _INTERPOLATIONS for child in node.children):
+    if node.type in {"string", "string_literal"} and any(
+        child.type in _INTERPOLATIONS for child in node.children
+    ):
         return False
     return True
 
