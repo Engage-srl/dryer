@@ -47,7 +47,7 @@ What stays is the call or method name, the operator, and the shape of the tree. 
 ./dryer
 ```
 
-The first run creates `.venv` and installs the tool. From a project root it walks the tree, skips `test`, `spec`, `vendor`, `node_modules`, and `target`, and writes two results:
+The first run creates `.venv` and installs the tool. From a project root it walks the tree, skips `test`, `spec`, `vendor`, `node_modules`, `target`, and test source sets such as `commonTest` and `jvmTest`, and writes two results:
 
 - a report on stdout, closest match first
 - `.metrics/dry.edn`, replaced on every successful analysis
@@ -97,12 +97,14 @@ DUPLICATE score=0.89
 | --- | --- | --- |
 | Clojure | every top-level form except `ns` | reader-conditional branches other than `:clj` |
 | Java | methods with a body | constructors, abstract methods, methods inside anonymous or local classes |
-| Kotlin | functions with a body, custom accessors | inline and abstract functions, constructors, init blocks, local functions, members of anonymous objects |
+| Kotlin | every `fun` with a body, including expression bodies, extension functions, and functions in an `object` or `companion object`, and custom property accessors (`get()` or `set(v)` with a body) | local functions, lambdas, functions inside anonymous objects and local classes, secondary constructors, `init` blocks, `inline fun` |
 | Go | functions and methods with a body | function literals stay inside the enclosing function |
 | TypeScript | functions, methods, and top-level arrow functions | callbacks nested inside another function |
 | Rust | functions and methods with a body | functions inside `mod tests`, and closures |
 | Python | functions and methods | functions nested inside another function |
 | Dart | functions, methods, getters, setters, operators, factory constructors | generative constructors, abstract and external members, local functions, closures, generated files |
+
+Kotlin `inline fun` is left out because the compiler copies its body into each caller, so JaCoCo never credits it coverage and crapper does not score it. Methods of a `value class` are still compared.
 
 Clojure reader conditionals keep the `:clj` branch, as dry4clj does. Syntax-quote is kept as a `syntax-quote` form rather than expanded.
 

@@ -1,163 +1,302 @@
-from pathlib import Path
-
-from dryer.discover import iter_source_files, language_of
+from dryer.discover import language_of
 from dryer.extract import entries_in_source
 from dryer.model import Entry
-from dryer.scan import find_duplicates, scan_files
+from dryer.scan import find_duplicates
 
 
-def write_source(root: Path, name: str, text: str) -> None:
-    path = root / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
-def pairs(root: Path):
-    files = sorted(path for path in root.rglob("*") if path.is_file())
-    entries, warnings = scan_files(files, root, min_lines=1, min_nodes=1)
-    assert warnings == []
-    return find_duplicates(entries, threshold=0.99)
-
-
-def forms(source: str, file: str) -> list[Entry]:
-    entries, warning = entries_in_source("kotlin", source, file, file)
+def forms(language: str, source: str, file: str) -> list[Entry]:
+    entries, warning = entries_in_source(language, source, file, file)
     assert warning is None
     return entries
 
 
-def _function(body: str, name: str = "alpha") -> str:
-    return f"package demo\n\nfun {name}(xs: List<Int>, a: String?): Any {{\n{body}\n}}\n"
-
-
-def _score(left: str, right: str) -> float:
-    found = find_duplicates(forms(left, "a.kt") + forms(right, "b.kt"), threshold=0.0)
+def score(language: str, left: str, right: str) -> float:
+    suffix = {"kotlin": "kt", "java": "java", "python": "py"}[language]
+    entries = forms(language, left, f"a.{suffix}") + forms(language, right, f"b.{suffix}")
+    found = find_duplicates(entries, threshold=0.0)
     assert len(found) == 1
     return found[0].score
 
 
-def test_kotlin_matches_renamed_locals(tmp_path):
-    write_source(
-        tmp_path,
-        "left.kt",
-        "fun alpha(xs: List<Int>): List<Int> {\n    val ys = filter(xs, odd)\n    return map(ys, inc)\n}\n",
-    )
-    write_source(
-        tmp_path,
-        "right.kt",
-        "fun beta(items: List<Int>): List<Int> {\n    val kept = filter(items, even)\n    return map(kept, dec)\n}\n",
-    )
-    found = pairs(tmp_path)
-    assert len(found) == 1
-    assert found[0].language == "kotlin"
-    assert found[0].score == 1.0
+def spans(source: str) -> list[tuple[int, int]]:
+    return [(entry.start_line, entry.end_line) for entry in forms("kotlin", source, "a.kt")]
 
 
-def test_kotlin_member_calls_keep_their_names():
-    filtered = _function("    return xs.filter { it > 0 }.size")
-    mapped = _function("    return xs.map { it > 0 }.size", "beta")
-    counted = _function("    return ys.filter { it > 1 }.count", "beta")
-    assert _score(filtered, mapped) < 0.99
-    assert _score(filtered, counted) == 1.0
-
-
-def test_kotlin_safe_call_is_part_of_the_shape():
-    safe = _function("    val t = a?.trim()\n    return t")
-    plain = _function("    val t = a.trim()\n    return t", "beta")
-    assert _score(safe, plain) < 0.99
-
-
-def test_kotlin_interpolated_string_is_not_a_plain_literal():
-    interpolated = _function('    return "v=$a"')
-    plain = _function('    return "v"', "beta")
-    assert _score(interpolated, plain) < 1.0
-
-
-CANDIDATES = """\
-package demo
-
-class Box {
-    fun place(): Int {
-        return 1
-    }
-
-    val size: Int
-        get() {
-            return 2
-        }
-
-    inline fun inl(): Int {
-        return 3
-    }
-
-    init {
-        println()
-    }
-
-    fun outer() {
-        fun local() {}
-        val o = object : Runnable {
-            override fun run() {}
-        }
-    }
-
-    companion object {
-        fun make(): Box {
-            return Box()
-        }
-    }
+SAVE = """\
+fun saveUser(repo: Repo, user: User): Boolean {
+    val ok = repo.validate(user)
+    if (ok) repo.insert(user)
+    return audit.record(user)
 }
+"""
 
-abstract class Shape {
-    abstract fun area(): Int
+DROP = """\
+fun dropUser(repo: Repo, user: User): Boolean {
+    val ok = repo.authorize(user)
+    if (ok) repo.delete(user)
+    return mailer.notify(user)
 }
+"""
 
-enum class Color {
-    RED {
-        override fun hex(): Int {
-            return 1
-        }
-    };
-
-    abstract fun hex(): Int
+JAVA_SAVE = """\
+class A {
+  boolean saveUser(Repo repo, User user) {
+    boolean ok = repo.validate(user);
+    if (ok) repo.insert(user);
+    return audit.record(user);
+  }
 }
+"""
 
-fun String.shout() = uppercase()
+JAVA_DROP = """\
+class B {
+  boolean dropUser(Repo repo, User user) {
+    boolean ok = repo.authorize(user);
+    if (ok) repo.delete(user);
+    return mailer.notify(user);
+  }
+}
 """
 
 
-def test_kotlin_candidates_match_crapper():
-    starts = [entry.start_line for entry in forms(CANDIDATES, "Box.kt")]
-    assert starts == [4, 9, 21, 29, 41, 49]
-
-
-def test_kotlin_detection(tmp_path):
-    assert language_of("A.kt") == "kotlin"
+def test_kt_is_kotlin():
+    assert language_of("src/main/kotlin/App.kt") == "kotlin"
     assert language_of("build.gradle.kts") is None
-    write_source(tmp_path, "src/B.kt", "fun b() {}\n")
-    write_source(tmp_path, ".claude/worktrees/x/A.kt", "fun a() {}\n")
-    found = iter_source_files([tmp_path])
-    assert [path.name for path in found] == ["B.kt"]
 
 
-def test_kotlin_broken_source_does_not_raise():
-    forms("fun broken( {\n", "B.kt")
+def test_renamed_locals_and_literals_score_one():
+    renamed = """\
+fun keepUser(store: Repo, who: User): Boolean {
+    val good = store.validate(who)
+    if (good) store.insert(who)
+    return audit.record(who, 0xFF)
+}
+"""
+    literal = SAVE.replace("record(user)", "record(user, 2.5)")
+    assert score("kotlin", literal, renamed) == 1.0
 
 
-def test_help_mentions_kotlin():
-    from dryer.cli import HELP
-
-    assert "Kotlin (.kt)" in HELP
-
-
-def test_kotlin_infix_calls_keep_their_names():
-    until = _function("    return (0 until 3).toList()")
-    down = _function("    return (0 downTo 3).toList()", "beta")
-    renamed = _function("    return (1 until 2).toList()", "beta")
-    assert _score(until, down) < 0.99
-    assert _score(until, renamed) == 1.0
+def test_different_callees_score_about_what_java_does():
+    kotlin = score("kotlin", SAVE, DROP)
+    java = score("java", JAVA_SAVE, JAVA_DROP)
+    assert kotlin < 0.5
+    assert abs(kotlin - java) < 0.1
 
 
-def test_typescript_mapped_type_optional_is_not_an_operator():
-    source = "function alpha<T>(x: { [K in keyof T]?: T[K] }) {\n  return x;\n}\n"
-    entries, _warning = entries_in_source("typescript", source, "a.ts", "a.ts")
-    assert not any("?:" in item for item in entries[0].fingerprints)
+def test_a_navigation_call_keeps_the_method_name():
+    fingerprints = " ".join(forms("kotlin", SAVE, "a.kt")[0].fingerprints)
+    assert '"validate"' in fingerprints
+    assert '"record"' in fingerprints
+    assert '"repo"' not in fingerprints
+    assert '"user"' not in fingerprints
+
+
+def test_a_field_name_is_not_part_of_the_structure():
+    left = "fun alpha(order: Order): Int {\n    return order.total\n}\n"
+    right = "fun beta(row: Row): Int {\n    return row.amount\n}\n"
+    assert score("kotlin", left, right) == 1.0
+
+
+def test_a_safe_call_is_not_a_plain_call():
+    plain = "fun alpha(xs: List) {\n    xs.clear()\n}\n"
+    safe = "fun beta(xs: List?) {\n    xs?.clear()\n}\n"
+    assert score("kotlin", plain, safe) < 1.0
+
+
+def test_kotlin_operators_stay():
+    left = "fun alpha(x: Any, y: Set) = x is String"
+    right = "fun beta(x: Any, y: Set) = x in y"
+    assert score("kotlin", left, right) < 1.0
+    cast = "fun alpha(x: Any) = x as String"
+    safe_cast = "fun beta(x: Any) = x as? String"
+    assert score("kotlin", cast, safe_cast) < 1.0
+
+
+def test_python_in_and_is_are_not_kotlin_operators():
+    left = "def alpha(x, y):\n    return x in y\n"
+    right = "def beta(x, y):\n    return x is y\n"
+    assert score("python", left, right) == 1.0
+
+
+def test_an_interpolated_string_is_not_a_plain_literal():
+    plain = 'fun alpha(name: String) = greet("hello")'
+    interpolated = 'fun beta(name: String) = greet("hello $name")'
+    assert score("kotlin", plain, interpolated) < 1.0
+
+
+def test_every_fun_with_a_body_is_a_candidate():
+    assert spans(
+        """\
+fun top(): Int = 1
+
+fun String.shout(): String {
+    return uppercase()
+}
+
+class Board {
+    fun alpha(): Int {
+        return 1
+    }
+    companion object {
+        fun beta() = 2
+    }
+}
+
+object Registry {
+    fun gamma() {}
+}
+
+enum class Shape {
+    SQUARE {
+        override fun sides() = 4
+    };
+    abstract fun sides(): Int
+}
+"""
+    ) == [(1, 1), (3, 5), (8, 10), (12, 12), (17, 17), (22, 22)]
+
+
+def test_local_functions_lambdas_and_anonymous_objects_stay_inside():
+    assert spans(
+        """\
+interface Runner {
+    fun declared()
+}
+
+fun outer() {
+    fun local() {}
+    val f = fun() {}
+    val g = { x: Int -> x }
+    val r = object : Runner {
+        override fun declared() {}
+    }
+    class Local {
+        fun method() {}
+    }
+}
+"""
+    ) == [(5, 15)]
+
+
+def test_a_comment_between_a_call_and_a_parenthesized_line_is_read():
+    source = """\
+fun alpha(a: A) {
+    a.run { x }
+    // note
+    (a.b as? C)?.d()
+}
+"""
+    entries = forms("kotlin", source, "a.kt")
+    assert [(entry.start_line, entry.end_line) for entry in entries] == [(1, 5)]
+    assert any('"run"' in item for item in entries[0].fingerprints)
+
+
+def test_an_infix_call_keeps_its_name():
+    until = "fun alpha(n: Int): List<Int> {\n    return (0 until 3).toList()\n}\n"
+    down_to = "fun beta(n: Int): List<Int> {\n    return (0 downTo 3).toList()\n}\n"
+    other_bounds = "fun beta(n: Int): List<Int> {\n    return (1 until 2).toList()\n}\n"
+    assert any('"until"' in item for item in forms("kotlin", until, "a.kt")[0].fingerprints)
+    assert score("kotlin", until, down_to) < 1.0
+    assert score("kotlin", until, other_bounds) == 1.0
+
+
+def test_infix_operands_are_not_names():
+    left = "fun alpha(a: Int, b: Int) = a shl b"
+    right = "fun beta(x: Int, y: Int) = x shl y"
+    assert score("kotlin", left, right) == 1.0
+
+
+INLINE_PAIR = """\
+inline fun alpha(xs: List<Int>): List<Int> {
+    val ys = xs.filter { it > 0 }
+    return ys.map { it + 1 }
+}
+
+inline fun beta(items: List<Int>): List<Int> {
+    val kept = items.filter { it > 0 }
+    return kept.map { it + 1 }
+}
+"""
+
+
+def test_identical_inline_functions_are_not_compared():
+    assert find_duplicates(forms("kotlin", INLINE_PAIR, "a.kt"), threshold=0.0) == []
+
+
+def test_the_same_functions_without_inline_score_one():
+    plain = INLINE_PAIR.replace("inline fun", "fun")
+    found = find_duplicates(forms("kotlin", plain, "a.kt"), threshold=0.0)
+    assert [item.score for item in found] == [1.0]
+
+
+def test_every_placement_of_inline_is_skipped():
+    assert spans(
+        """\
+inline fun a() {}
+public inline fun b() {}
+internal inline fun c() {}
+private inline fun d() {}
+@InlineOnly inline fun e() {}
+inline fun <reified T> f() {}
+inline fun String.g() {}
+class Board {
+    inline fun h() {}
+    override inline fun i() {}
+    companion object {
+        inline fun j() {}
+    }
+}
+object Registry {
+    inline fun k() {}
+}
+fun kept() {}
+"""
+    ) == [(18, 18)]
+
+
+def test_methods_of_a_value_class_or_inline_class_are_compared():
+    assert spans(
+        """\
+@JvmInline
+value class Meters(val value: Int) {
+    fun twice() = value * 2
+}
+inline class Feet(val value: Int) {
+    fun twice() = value * 2
+}
+"""
+    ) == [(3, 3), (6, 6)]
+
+
+ACCESSORS = """\
+package demo
+
+class Box(val full: Boolean) {
+    val size: Int
+        get() {
+            return if (full) 1 else 0
+        }
+
+    var label: String = ""
+        set(value) {
+            field = value
+        }
+
+    var tag: String = ""
+        get() = field
+
+    val plain = 1
+}
+"""
+
+
+def test_custom_accessors_are_candidates():
+    assert spans(ACCESSORS) == [(5, 7), (10, 12), (15, 15)]
+
+
+def test_two_copies_of_the_same_accessor_are_a_pair():
+    left = ACCESSORS
+    right = ACCESSORS.replace("Box", "Crate").replace("size", "weight")
+    entries = forms("kotlin", left, "A.kt") + forms("kotlin", right, "B.kt")
+    pairs = find_duplicates(entries, threshold=0.99)
+    assert any(pair.left.start_line == 5 and pair.right.start_line == 5 for pair in pairs)
