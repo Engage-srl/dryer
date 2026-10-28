@@ -55,8 +55,10 @@ Arguments:
                     path contains this text are compared.
 
 With no paths, source files under the project root are compared. Directories
-named {_skipped_directory_text()} are skipped, as are *_test.go, *.test.cts,
-*.spec.cts, *.spec.ts, test_*.py, and *_test.py files.
+named {_skipped_directory_text()} are skipped, as are Gradle and Kotlin
+Multiplatform test source sets such as commonTest, jvmTest, testFixtures, and
+testData, and *_test.go, *.test.cts, *.spec.cts, *.spec.ts, test_*.py, and
+*_test.py files.
 
 Clojure compares every top-level form except ns. The other languages compare
 functions and methods. A form is only compared with forms in the same language.
