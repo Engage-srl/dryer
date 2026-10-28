@@ -27,6 +27,7 @@ _DEFINITION_PARENTS = {
     "property_definition",
 }
 
+_KOTLIN_ACCESSORS = {"getter", "setter"}
 _KOTLIN_CONTAINERS = {
     "source_file",
     "class_declaration",
@@ -118,6 +119,11 @@ def _kotlin_nodes(data: bytes, root) -> list:
         if node.type == "function_declaration":
             if _has(node, "function_body") and not _kotlin_inline(node):
                 found.append(node)
+        elif node.type in _KOTLIN_ACCESSORS:
+            if _has(node, "function_body"):
+                found.append(node)
+        elif node.type == "property_declaration":
+            stack.extend(child for child in reversed(node.children) if child.type in _KOTLIN_ACCESSORS)
         elif node.type in _KOTLIN_CONTAINERS:
             stack.extend(reversed(node.children))
     return found

@@ -266,3 +266,37 @@ inline class Feet(val value: Int) {
 }
 """
     ) == [(3, 3), (6, 6)]
+
+
+ACCESSORS = """\
+package demo
+
+class Box(val full: Boolean) {
+    val size: Int
+        get() {
+            return if (full) 1 else 0
+        }
+
+    var label: String = ""
+        set(value) {
+            field = value
+        }
+
+    var tag: String = ""
+        get() = field
+
+    val plain = 1
+}
+"""
+
+
+def test_custom_accessors_are_candidates():
+    assert spans(ACCESSORS) == [(5, 7), (10, 12), (15, 15)]
+
+
+def test_two_copies_of_the_same_accessor_are_a_pair():
+    left = ACCESSORS
+    right = ACCESSORS.replace("Box", "Crate").replace("size", "weight")
+    entries = forms("kotlin", left, "A.kt") + forms("kotlin", right, "B.kt")
+    pairs = find_duplicates(entries, threshold=0.99)
+    assert any(pair.left.start_line == 5 and pair.right.start_line == 5 for pair in pairs)
