@@ -97,7 +97,7 @@ DUPLICATE score=0.89
 | --- | --- | --- |
 | Clojure | every top-level form except `ns` | reader-conditional branches other than `:clj` |
 | Java | methods with a body | constructors, abstract methods, methods inside anonymous or local classes |
-| Kotlin | every `fun` with a body, including expression bodies, extension functions, and functions in an `object` or `companion object` | local functions, lambdas, functions inside anonymous objects and local classes, secondary constructors, `init` blocks, `inline fun` |
+| Kotlin | every `fun` with a body, including expression bodies, extension functions, and functions in an `object` or `companion object`, and custom property accessors (`get()` or `set(v)` with a body) | local functions, lambdas, functions inside anonymous objects and local classes, secondary constructors, `init` blocks, `inline fun` |
 | Go | functions and methods with a body | function literals stay inside the enclosing function |
 | TypeScript | functions, methods, and top-level arrow functions | callbacks nested inside another function |
 | Rust | functions and methods with a body | functions inside `mod tests`, and closures |
