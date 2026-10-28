@@ -62,6 +62,8 @@ testData, and *_test.go, *.test.cts, *.spec.cts, *.spec.ts, test_*.py, and
 
 Clojure compares every top-level form except ns. The other languages compare
 functions and methods. A form is only compared with forms in the same language.
+Kotlin inline functions are not compared, since their body is copied into each
+caller and crapper cannot score them.
 
 Exit codes:
   0  the report was written

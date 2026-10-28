@@ -99,13 +99,24 @@ def _java_nodes(data: bytes, root) -> list:
     return found
 
 
+def _kotlin_inline(node) -> bool:
+    modifiers = child_of_type(node, "modifiers")
+    if modifiers is None:
+        return False
+    return any(
+        child_of_type(modifier, "inline") is not None
+        for modifier in modifiers.children
+        if modifier.type == "function_modifier"
+    )
+
+
 def _kotlin_nodes(data: bytes, root) -> list:
     found = []
     stack = [root]
     while stack:
         node = stack.pop()
         if node.type == "function_declaration":
-            if _has(node, "function_body"):
+            if _has(node, "function_body") and not _kotlin_inline(node):
                 found.append(node)
         elif node.type in _KOTLIN_CONTAINERS:
             stack.extend(reversed(node.children))

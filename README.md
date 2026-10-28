@@ -97,11 +97,13 @@ DUPLICATE score=0.89
 | --- | --- | --- |
 | Clojure | every top-level form except `ns` | reader-conditional branches other than `:clj` |
 | Java | methods with a body | constructors, abstract methods, methods inside anonymous or local classes |
-| Kotlin | every `fun` with a body, including expression bodies, extension functions, and functions in an `object` or `companion object` | local functions, lambdas, functions inside anonymous objects and local classes, secondary constructors, `init` blocks |
+| Kotlin | every `fun` with a body, including expression bodies, extension functions, and functions in an `object` or `companion object` | local functions, lambdas, functions inside anonymous objects and local classes, secondary constructors, `init` blocks, `inline fun` |
 | Go | functions and methods with a body | function literals stay inside the enclosing function |
 | TypeScript | functions, methods, and top-level arrow functions | callbacks nested inside another function |
 | Rust | functions and methods with a body | functions inside `mod tests`, and closures |
 | Python | functions and methods | functions nested inside another function |
+
+Kotlin `inline fun` is left out because the compiler copies its body into each caller, so JaCoCo never credits it coverage and crapper does not score it. Methods of a `value class` are still compared.
 
 Clojure reader conditionals keep the `:clj` branch, as dry4clj does. Syntax-quote is kept as a `syntax-quote` form rather than expanded.
 

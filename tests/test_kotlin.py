@@ -204,3 +204,65 @@ def test_infix_operands_are_not_names():
     left = "fun alpha(a: Int, b: Int) = a shl b"
     right = "fun beta(x: Int, y: Int) = x shl y"
     assert score("kotlin", left, right) == 1.0
+
+
+INLINE_PAIR = """\
+inline fun alpha(xs: List<Int>): List<Int> {
+    val ys = xs.filter { it > 0 }
+    return ys.map { it + 1 }
+}
+
+inline fun beta(items: List<Int>): List<Int> {
+    val kept = items.filter { it > 0 }
+    return kept.map { it + 1 }
+}
+"""
+
+
+def test_identical_inline_functions_are_not_compared():
+    assert find_duplicates(forms("kotlin", INLINE_PAIR, "a.kt"), threshold=0.0) == []
+
+
+def test_the_same_functions_without_inline_score_one():
+    plain = INLINE_PAIR.replace("inline fun", "fun")
+    found = find_duplicates(forms("kotlin", plain, "a.kt"), threshold=0.0)
+    assert [item.score for item in found] == [1.0]
+
+
+def test_every_placement_of_inline_is_skipped():
+    assert spans(
+        """\
+inline fun a() {}
+public inline fun b() {}
+internal inline fun c() {}
+private inline fun d() {}
+@InlineOnly inline fun e() {}
+inline fun <reified T> f() {}
+inline fun String.g() {}
+class Board {
+    inline fun h() {}
+    override inline fun i() {}
+    companion object {
+        inline fun j() {}
+    }
+}
+object Registry {
+    inline fun k() {}
+}
+fun kept() {}
+"""
+    ) == [(18, 18)]
+
+
+def test_methods_of_a_value_class_or_inline_class_are_compared():
+    assert spans(
+        """\
+@JvmInline
+value class Meters(val value: Int) {
+    fun twice() = value * 2
+}
+inline class Feet(val value: Int) {
+    fun twice() = value * 2
+}
+"""
+    ) == [(3, 3), (6, 6)]
