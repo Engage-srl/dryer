@@ -26,6 +26,7 @@ EXTENSIONS = {
 
 SKIP_DIRS = {
     ".git",
+    ".claude",
     ".hg",
     ".svn",
     ".idea",

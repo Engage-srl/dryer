@@ -348,3 +348,9 @@ def test_a_second_report_replaces_the_snapshot(tmp_path, capsys):
     assert run(args) == 0
     assert run(args) == 0
     assert (tmp_path / ".metrics" / "dry.edn").read_text(encoding="utf-8") == "{:candidates []}\n"
+
+
+def test_a_claude_worktree_is_not_scanned(tmp_path):
+    write_source(tmp_path, "src/B.kt", "fun b() {}\n")
+    write_source(tmp_path, ".claude/worktrees/x/A.kt", "fun a() {}\n")
+    assert [path.name for path in iter_source_files([tmp_path])] == ["B.kt"]
